@@ -1,0 +1,55 @@
+name: Terraform
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+
+    services:
+      localstack:
+        image: localstack/localstack
+        ports:
+          - 4566:4566
+        options: >-
+          --health-cmd "curl -f http://localhost:4566/health || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 20
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v2
+
+    - name: Wait for LocalStack to be ready
+      run: |
+        echo "Waiting for LocalStack to be ready..."
+        retries=20
+        while ! curl -s http://localhost:4566/health | grep "\"s3\": \"running\"" > /dev/null; do
+          retries=$((retries - 1))
+          if [ $retries -le 0 ]; then
+            echo "LocalStack failed to start"
+            exit 1
+          fi
+          echo "Waiting for LocalStack... ($retries retries left)"
+          sleep 10
+        done
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v1
+
+    - name: Terraform Init
+      run: terraform init
+
+    - name: Terraform Plan
+      run: terraform plan
+
+    - name: Terraform Apply
+      if: github.ref == 'refs/heads/master'
+      run: terraform apply -auto-approve
